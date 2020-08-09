@@ -24,7 +24,7 @@ We can find out if flights lost or gained time on the average
 ```{r}
 flights2%>%summarize(average=mean(gain,na.rm=TRUE))
 ```
-So on average, flights gained about 5.5 minutes in the air. We can also find the the average amount of time gained by planes coming from or going to a certain airport.
+So on average, flights lost about 5 minutes in the air. We can also find the the average amount of time gained by planes coming from or going to a certain airport.
 ```{r}
 flights2%>%filter(dest=="SEA")%>%summarize(average=mean(gain,na.rm=TRUE))
 flights2%>%filter(origin=="JFK")%>%summarize(average=mean(gain,na.rm=TRUE))
