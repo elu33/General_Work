@@ -1,0 +1,64 @@
+---
+title: "flight times"
+author: "Luke Yee"
+date: "8/9/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r, warning = FALSE}
+library(tidyverse)
+library(nycflights13)
+```
+I am conducting a basic analysis regarding the variation of flight times, demonstrating the extremely useful tidyverse package. The dataset I am using is called flights has roughly 336,000 observations and multiple columns with relevant information pertaining to flight times.
+```{r}
+glimpse(flights)
+```
+First, I will add a column that shows the amount of time gained during air (the arrival - the departure delay), then sort the the data by the amount of gain time
+```{r}
+flights%>%mutate(gain=arr_delay-dep_delay)
+flights2<-flights%>%mutate(gain=arr_delay-dep_delay)%>%arrange(desc(gain))
+```
+We can find out if flights lost or gained time on the average
+```{r}
+flights2%>%summarize(average=mean(gain,na.rm=TRUE))
+```
+So on average, flights gained about 5.5 minutes in the air. We can also find the the average amount of time gained by planes coming from or going to a certain airport.
+```{r}
+flights2%>%filter(dest=="SEA")%>%summarize(average=mean(gain,na.rm=TRUE))
+flights2%>%filter(origin=="JFK")%>%summarize(average=mean(gain,na.rm=TRUE))
+```
+So flights heading to the Seattle-Tacoma airport lose about 11 minutes, and flights coming from JFK lose about 6 minutes. Besides this, we can find key information about specific routes as well.
+```{r}
+flights2%>%filter(origin=="JFK",dest=="SEA")%>%summarize(minimum=min(air_time,na.rm=TRUE),maximum=max(air_time,na.rm=TRUE),average=mean(air_time,na.rm=TRUE))
+```
+In this case, we see that the minimum flight time from JFK airport to was 275 minutes, the maximum was 389 minutes, and the average was 329 minutes. We can also sort delay times by month of the year
+```{r}
+slowest<-flights2%>%group_by(month)%>%summarize(delayance=mean(dep_delay,na.rm=TRUE)) %>% arrange(desc(delayance))
+slowest
+```
+Here we can see that July has the highest average delay times, while September has the lowest average delay times. Let's also find the airport that usually has the highest average delay times
+```{r}
+slowflight<-flights2%>%group_by(dest)%>%summarize(arrivaldelay=mean(arr_delay,na.rm=TRUE))%>%arrange(desc(arrivaldelay))
+slowflight %>% head(5)
+```
+We can see Columbia Metropolitan Airport on average has the greatest delay times. Going in another direction, we can find the airports that flown to the fastest by creating another column called speed (distance flown/air time), grouping by destinations, and find the averages of those groups
+```{r}
+flights%>%mutate(speed=distance/air_time)%>%group_by(dest)%>%summarize(average=mean(speed,na.rm=TRUE))%>%arrange(desc(average)) %>% head(5)
+```
+We see that Anchorage International Airport is the destination that is flown to with the greatest speed. Finally, lets try combining relevant data from this dataset with a similar dataset using a "join"
+```{r}
+#first, using the flights data, we find information that we would like to 
+#be added to the similar dataset
+avg_arrival_delay<-flights%>%group_by(dest)%>%summarize(delayal=mean(arr_delay, na.rm=TRUE))
+
+#we are combining average delay times by airport with another dataset called airports
+#that has information containing latitudes, longitutes, etc. We join by columns that 
+#exist in both datasets
+plane2<-left_join(avg_arrival_delay,airports,by=c("dest"="faa"))
+plane2 %>% head(10)
+```
+
+
+
