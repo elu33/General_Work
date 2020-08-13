@@ -1,0 +1,76 @@
+---
+title: "customers"
+author: "Luke Yee"
+date: "8/9/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r, include = FALSE}
+#I use a ucdavis host
+library(DBI)
+mydb <- NULL
+chinook <- dbConnect(
+  RPostgres::Postgres(),
+  dbname = "chinook",
+  user = "psqluser", password = "secret", host = "alan.ucdavis.edu"
+)
+```
+
+I will be observing customer data from a (fictional) digital media store.
+- There are 11 tables in the chinook sample database.
+
+  - `Employee` table stores employees data such as employee id, last name, first name, etc.
+  - `Customer` table stores customers data.
+  - `Invoice` & `InvoiceLine` tables: these two tables store invoice data.
+  - `Artist` table stores artists data. It is a simple table that contains only the artist id and name.
+  - `Albums` table stores data about a list of tracks. Each album belongs to one artist. However, one artist may have multiple albums.
+  - `MediaType` table stores media types such as MPEG audio and AAC audio file.
+  - `Genre` table stores music types such as rock, jazz, metal, etc.
+  - `Track` table store the data of songs. Each track belongs to one album.
+  - `Playlist` & `PlaylistTrack` tables: playlists table store data about playlists.
+
+A basic query for the title of the album with an album id = 31:
+```{sql connection = chinook}
+select * from "Album" Where "AlbumId" = 31;
+```
+
+A query that returns all albums whose artist have the word "black" in their name, using tidyverse
+```{r}
+library(tidyverse)
+Artist1 <- chinook %>% tbl("Artist") %>% collect()
+Album1 <- chinook %>% tbl("Album") %>% collect()
+Artist1 %>% filter(str_detect(Name,"Black")) %>% inner_join(Album1, by = "ArtistId") %>% collect()
+```
+And the same query in SQL:
+```{sql connection=chinook}
+select a."Title", b."Name"
+from "Album" a join (
+select * from "Artist" where "Name" like '%Black%') b
+on b."ArtistId" = a."ArtistId"
+```
+
+A query for the length and name of all tracks that are between 30 and 40 seconds, and of the genre Latin:
+```{sql connection = chinook}
+select ("GenreId", "Name", "Milliseconds") from "Track" where "GenreId" = 7 and "Milliseconds" > 300000 and "Milliseconds" < 400000
+```
+
+A query that list each country and the number of customers in that country:
+```{sql connection = chinook}
+select "Country", count("Country") as "customer_amount" from "Customer" group by "Country"
+```
+And its equivalent in tidyverse:
+```{r}
+chinook %>% tbl("Customer") %>% group_by(Country) %>% count() %>% collect()
+```
+
+Finally, a query that returns the artists whose listeners span the most number of countries, ie the artist listened to by the most countries
+```{sql connection = chinook}
+select e."Name", count(distinct(a."BillingCountry")) as "countries_reached"
+from "Invoice" a 
+join "InvoiceLine" b on a."InvoiceId" = b."InvoiceId"
+join "Track" c on b."TrackId" = c."TrackId"
+join "Album" d on c."AlbumId" = d."AlbumId"
+join "Artist" e on d."ArtistId" = e."ArtistId"
+group by e."Name" order by "countries_reached" desc
+```
