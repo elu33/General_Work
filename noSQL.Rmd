@@ -1,0 +1,140 @@
+---
+title: "noSQL"
+author: "Luke Yee"
+date: "8/13/2020"
+output: pdf_document
+---
+
+In this document I will be demonstrating queries from non-relational databases. The database I will use is a sample airbnb database, a collection of documents that represent home listing details and reviews. A sample can be found here: https://docs.atlas.mongodb.com/sample-data/sample-airbnb
+
+```{r, include = FALSE}
+library(tidyverse)
+library(mongolite)
+library(jsonlite)
+
+m1 <- mongo("airbnb", db = "data", url = "mongodb://mongouser:secret@alan.ucdavis.edu/data")
+```
+
+A basic query to find listings that are `room_type == "Entire home/apt"` and number of beds >= 3.
+```{r}
+#m1 is the json object loaded from the database
+m1$count(
+  '{"room_type" : "Entire home/apt", "beds" : {"$gte" : 3}}'
+)
+```
+
+A query of all the experience ratings and prices, and then a plot of `rating` vs `price`
+```{r}
+m1$find( 
+  '{}',
+  fields = '{"review_scores.review_scores_rating" : true, "price" : true, "name" : true}',
+  sort = '{"price" : 1}', 
+  limit = 10
+)
+df1 <- m1$find( 
+  '{}',
+  fields = '{"review_scores.review_scores_rating" : true, "price" : true, "name" : true}',
+  sort = '{"price" : 1}', 
+  limit = 1000
+) %>% mutate(review_scores = review_scores$review_scores_rating)
+plot(df1$review_scores, df1$price)
+```
+We can see that price is not the best indicator of a high review score, as both low-price and high-price listings have good reviews
+
+We can also find properties that have certain features. For example, here is a list of properties that have "Washer" and "Kitchen" as amenities
+```{r}
+m1$find(
+  '{"amenities" : {"$in" : ["Washer" , "Kitchen"]}}', 
+  fields = '{"name" : true}',
+  limit = 10
+)
+```
+
+We can also filter listings by certain characteristics and find summary statistics. For example, this query finds all properties with over 100 reviews, then finds the average price for each type of property
+```{r}
+m1$aggregate('[
+  {"$match": {"number_of_reviews": {"$gte": 101}}},
+  {"$group": { "_id": "$property_type", "price": { "$avg": "$price" }}},
+  {"$sort": { "price": -1}}
+]')
+```
+
+The next database contains sales data. Each document in the `sales` collection represents a single sale from a store run by the supply company, with relevant information such as the items purchased and customer information. A sample document can be found here: https://docs.atlas.mongodb.com/sample-data/sample-supplies/
+
+```{r, include = FALSE}
+m2 <- mongo("sales", db = "data", url = "mongodb://mongouser:secret@alan.ucdavis.edu/data")
+```
+Note: to handle items, an `$unwind` must be used in the `aggregate` stage.
+
+The following query finds the number of items per transaction id
+```{r}
+#m2 is the json object loaded from the database
+m2$aggregate('[
+{"$unwind" : "$items"},
+{"$group": {
+    "_id": "$_id",
+    "items": {"$sum" : "$items.quantity"}
+    }
+  },
+  
+  {"$limit": 20}
+]') 
+```
+
+The following query finds the amount of money spent in each transaction, multiplying corresponding item price and item quantity, then summing the total
+```{r}
+m2$aggregate('[
+{"$unwind" : "$items"},
+{"$group": {
+    "_id": "$_id",
+    "totalAmount" : { "$sum": { "$multiply": [ "$items.price", "$items.quantity" ] } }
+    }
+  },
+  {"$limit": 20}
+]')
+```
+
+We can also plot the customer satisfaction against the price:
+```{r}
+df2 <- m2$aggregate('[
+{"$unwind" : "$items"},
+{"$group": {
+    "_id": "$_id",
+    "totalAmount" : { "$sum": { "$multiply": [ "$items.price", "$items.quantity" ] } }
+    }
+  },
+  {"$limit": 2000}
+]')
+
+df3 <- m2$find('{}', fields = '{"customer.satisfaction":1}', limit = 2000)
+df3$calculated_satisfaction <- df3$customer$satisfaction
+df4 <- merge(df2, df3, by="_id")
+plot(df4$calculated_satisfaction, df4$totalAmount)
+```
+We see the lower priced items do not necessarily mean lower customer satisfaction scores.
+
+Another useful thing we can find is the total sum of transactions by each store to see which stores have the most money flowing through
+```{r}
+m2$aggregate('[
+{"$group": {
+    "_id": "$storeLocation",
+    "transactions": {"$sum" : 1}
+    }
+}
+]')
+```
+We can see that the Denver location has the highest sum of transactions. Finally, we can find details regarding specific items. For example, the total amount of notepads sold across all locations:
+```{r}
+df5 <- m2$aggregate('[
+  {"$unwind": "$items"},
+  {"$group": {
+    "_id": "$items.name",
+    "item_amount": {"$sum" : "$items.quantity"}
+    }
+  },
+  {"$match": {"_id": "notepad"}}
+]')
+df5
+```
+
+
